@@ -163,49 +163,91 @@ class Generator {
   }
 
   /// Image rasterization
+
+  // this is a fixed & safer version compare to old method
   List<int> _toRasterFormat(Image imgSrc) {
-    final Image image = Image.from(imgSrc); // make a copy
-    final int widthPx = image.width;
-    final int heightPx = image.height;
+  final Image image = Image.from(imgSrc);
+  final int widthPx = image.width;
+  final int heightPx = image.height;
 
-    grayscale(image);
-    invert(image);
+  grayscale(image);
+  invert(image);
 
-    // R/G/B channels are same -> keep only one channel
-    List<int> oneChannelBytes = [];
-    final List<int> buffer = image.getBytes(order: ChannelOrder.rgba);
-    for (int i = 0; i < buffer.length; i += 4) {
-      oneChannelBytes.add(buffer[i]);
-    }
+  final List<int> buffer = image.getBytes(order: ChannelOrder.rgba);
 
-    // Add some empty pixels at the end of each line (to make the width divisible by 8)
-    if (widthPx % 8 != 0) {
-      final targetWidth = (widthPx + 8) - (widthPx % 8);
-      final missingPx = targetWidth - widthPx;
-      final extra = Uint8List(missingPx);
-
-      oneChannelBytes = List<int>.filled(heightPx * targetWidth, 0);
-
-      for (int i = 0; i < heightPx; i++) {
-        final pos =
-            (i * widthPx) + i * missingPx; // Corrected position calculation
-        oneChannelBytes.insertAll(pos, extra);
-      }
-    }
-
-    //  if (widthPx % 8 != 0) {
-    //   final targetWidth = (widthPx + 8) - (widthPx % 8);
-    //   final missingPx = targetWidth - widthPx;
-    //   final extra = Uint8List(missingPx);
-    //   for (int i = 0; i < heightPx; i++) {
-    //     final pos = (i * widthPx + widthPx) + i * missingPx;
-    //     oneChannelBytes.insertAll(pos, extra);
-    //   }
-    // }
-
-    // Pack bits into bytes
-    return _packBitsIntoBytes(oneChannelBytes);
+  // Extract single channel
+  final List<int> oneChannel = [];
+  for (int i = 0; i < buffer.length; i += 4) {
+    oneChannel.add(buffer[i]);
   }
+
+  int targetWidth = widthPx;
+  if (widthPx % 8 != 0) {
+    targetWidth = widthPx + (8 - (widthPx % 8));
+  }
+
+  // Build padded image safely
+  final List<int> padded = List<int>.filled(heightPx * targetWidth, 0);
+
+  for (int y = 0; y < heightPx; y++) {
+    final srcOffset = y * widthPx;
+    final dstOffset = y * targetWidth;
+
+    padded.setRange(
+      dstOffset,
+      dstOffset + widthPx,
+      oneChannel,
+      srcOffset,
+    );
+  }
+
+  return _packBitsIntoBytes(padded);
+}
+
+  //Error on flutter 3.27.0 : "Cannot add to a fixed-length list" on line oneChannelBytes.insertAll(pos, extra);
+  // List<int> _toRasterFormat(Image imgSrc) {
+  //   final Image image = Image.from(imgSrc); // make a copy
+  //   final int widthPx = image.width;
+  //   final int heightPx = image.height;
+
+  //   grayscale(image);
+  //   invert(image);
+
+  //   // R/G/B channels are same -> keep only one channel
+  //   List<int> oneChannelBytes = [];
+  //   final List<int> buffer = image.getBytes(order: ChannelOrder.rgba);
+  //   for (int i = 0; i < buffer.length; i += 4) {
+  //     oneChannelBytes.add(buffer[i]);
+  //   }
+
+  //   // Add some empty pixels at the end of each line (to make the width divisible by 8)
+  //   if (widthPx % 8 != 0) {
+  //     final targetWidth = (widthPx + 8) - (widthPx % 8);
+  //     final missingPx = targetWidth - widthPx;
+  //     final extra = Uint8List(missingPx);
+
+  //     oneChannelBytes = List<int>.filled(heightPx * targetWidth, 0);
+
+  //     for (int i = 0; i < heightPx; i++) {
+  //       final pos =
+  //           (i * widthPx) + i * missingPx; // Corrected position calculation
+  //       oneChannelBytes.insertAll(pos, extra);
+  //     }
+  //   }
+
+  //   //  if (widthPx % 8 != 0) {
+  //   //   final targetWidth = (widthPx + 8) - (widthPx % 8);
+  //   //   final missingPx = targetWidth - widthPx;
+  //   //   final extra = Uint8List(missingPx);
+  //   //   for (int i = 0; i < heightPx; i++) {
+  //   //     final pos = (i * widthPx + widthPx) + i * missingPx;
+  //   //     oneChannelBytes.insertAll(pos, extra);
+  //   //   }
+  //   // }
+
+  //   // Pack bits into bytes
+  //   return _packBitsIntoBytes(oneChannelBytes);
+  // }
 
   /// Merges each 8 values (bits) into one byte
   List<int> _packBitsIntoBytes(List<int> bytes) {
